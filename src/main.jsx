@@ -1220,6 +1220,11 @@ const editFee = (ev) => {
   db.collection('events').doc(ev.id).update({ fee: n }).catch((e) => { console.error(e); alert('No se pudo cambiar la cuota.'); });
 };
 const removeGuest = (ev, id) => db.collection('events').doc(ev.id).update({ going: FV.arrayRemove(id), ['guestPos.' + id]: FV.delete() }).catch(console.error);
+const removeFromEvent = (ev, id, name) => {
+  if (isGuest(id)) return removeGuest(ev, id);
+  if (!confirm('¿Sacar a ' + (name || 'este jugador') + ' de la pichanga?')) return;
+  return db.collection('events').doc(ev.id).update({ going: FV.arrayRemove(id), ['paid.' + id]: FV.delete() }).catch((e) => alert('No se pudo sacar: ' + e.message));
+};
 const effGoing = (e) => { const g = e.going || []; return payClosed(e) ? g.filter((id) => (e.paid || {})[id]) : g; };
 // Multa por llegar tarde: va al fondo del grupo
 const LATE_FEE = 2;
@@ -1432,7 +1437,7 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
                         </select>
                       : guestPosOf(ev, id) && <Badge id={guestPosOf(ev, id)} />)}
                     {ev.fee > 0 && <span className="ml-auto text-xs">{st === 'ok' ? '✅' : st === 'pending' ? '⏳' : ''}</span>}
-                    {isAdmin && isGuest(id) && <button onClick={(e) => { e.stopPropagation(); removeGuest(ev, id); }} className="ml-1 text-rose-400 text-xs font-bold">✕</button>}
+                    {isAdmin && <button title="Sacar de la pichanga" onClick={(e) => { e.stopPropagation(); removeFromEvent(ev, id, p && p.nickname); }} className="ml-1 text-rose-400 text-xs font-bold">✕</button>}
                   </div>
                 ) : (
                   <div key={i} className="slot slot-off"><span className="slot-n">{i + 1}</span><span>▫️</span><span>libre</span></div>
@@ -1451,7 +1456,7 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
                         <span>⏳</span>
                         {p && <Av p={p} size="w-6 h-6" text="text-sm" />}
                         <b className="truncate">{p ? p.nickname : isGuest(id) ? guestName(id) + ' (inv.)' : 'Jugador'}</b>
-                        {isAdmin && isGuest(id) && <button onClick={(e) => { e.stopPropagation(); removeGuest(ev, id); }} className="ml-auto text-rose-400 text-xs font-bold">✕</button>}
+                        {isAdmin && <button title="Sacar de la pichanga" onClick={(e) => { e.stopPropagation(); removeFromEvent(ev, id, p && p.nickname); }} className="ml-auto text-rose-400 text-xs font-bold">✕</button>}
                       </div>
                     );
                   })}
@@ -1700,6 +1705,16 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
 function AdminPanel({ me, players }) {
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [msgPost, setMsgPost] = useState('');
+  const [editUser, setEditUser] = useState(null);
+
+  const saveUser = async () => {
+    const nick = (editUser.nickname || '').trim();
+    if (!nick || nick.length > 30) return alert('El apodo es obligatorio (máx. 30 caracteres).');
+    try {
+      await db.collection('players').doc(editUser.id).update({ nickname: nick, phone: (editUser.phone || '').trim().slice(0, 30), avatar: editUser.avatar || '🏐' });
+      setEditUser(null);
+    } catch (e) { alert('No se pudo guardar: ' + e.message); }
+  };
 
   const updateSkills = async () => {
     if (!selectedPlayer) return;
@@ -1774,9 +1789,12 @@ function AdminPanel({ me, players }) {
                   </div>
                 </div>
               </div>
+<div className="flex shrink-0">
               <button onClick={() => setSelectedPlayer(JSON.parse(JSON.stringify(p)))} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 rounded-xl font-bold transition">
                 Calibrar ⚙️
               </button>
+              <button onClick={() => setEditUser({ id: p.id, nickname: p.nickname || '', phone: p.phone || '', avatar: p.avatar || '' })} className="ml-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 border border-slate-700 rounded-xl font-bold transition">Editar</button>
+              </div>
             </div>
           ))}
         </div>
@@ -1812,6 +1830,24 @@ function AdminPanel({ me, players }) {
           })}
         </div>
       </div>
+
+      {editUser && (
+        <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-3">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 space-y-3 text-xs enter shadow-2xl">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+              <b className="text-sm text-sky-400">Editar usuario</b>
+              <button onClick={() => setEditUser(null)} className="text-slate-400 hover:text-white text-base">✕</button>
+            </div>
+            <label className="block text-[11px] text-slate-400">Apodo<input className={inp + ' mt-1'} maxLength={30} value={editUser.nickname} onChange={(e) => setEditUser({ ...editUser, nickname: e.target.value })} /></label>
+            <label className="block text-[11px] text-slate-400">Celular<input className={inp + ' mt-1'} maxLength={30} value={editUser.phone} onChange={(e) => setEditUser({ ...editUser, phone: e.target.value })} /></label>
+            <label className="block text-[11px] text-slate-400">Avatar (emoji)<input className={inp + ' mt-1'} maxLength={4} value={editUser.avatar} onChange={(e) => setEditUser({ ...editUser, avatar: e.target.value })} /></label>
+            <div className="flex gap-2">
+              <button onClick={saveUser} className="btn-fire flex-1 py-2 rounded-xl text-xs font-black">Guardar</button>
+              <button onClick={() => setEditUser(null)} className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 text-slate-300">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de calibración */}
       {selectedPlayer && (

@@ -1239,7 +1239,10 @@ const fundOf = (evs, uid) => {
 };
 const fmtDL = (e) => new Date(payDeadline(e)).toLocaleString('es-PE', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const left = (e) => {
-  const d = Math.ceil((when(e) - Date.now()) / 864e5);
+  // Compara días del calendario (no horas), para que una pichanga de hoy no diga "mañana"
+  const a = new Date(); a.setHours(0, 0, 0, 0);
+  const b = when(e); b.setHours(0, 0, 0, 0);
+  const d = Math.round((b - a) / 864e5);
   return d < 0 ? 'Ya pasó' : d === 0 ? '¡Es hoy!' : d === 1 ? 'Es mañana' : `Faltan ${d} días`;
 };
 

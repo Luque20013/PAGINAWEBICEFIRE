@@ -874,6 +874,15 @@ function Roster({ players, onProfile }) {
 
 // ===== ARMADO INTELIGENTE DE EQUIPOS =====
 // ===== Armar a mano: cada capitán con su equipo =====
+// ===== ELEMENTOS: los equipos se llaman Fuego, Hielo y Aire (con su logo) =====
+const ELEMS = ['Fuego 🔥', 'Hielo ❄️', 'Aire 🌪️'];
+const teamName = (i) => ELEMS[i] || 'Equipo ' + String.fromCharCode(65 + i);
+const elemKey = (name) => { const m = /fuego|hielo|aire/i.exec(name || ''); return m ? m[0].toLowerCase() : null; };
+const ElemLogo = ({ name, size = 40 }) => {
+  const k = elemKey(name);
+  return k ? <img src={`./elementos/${k}.jpg`} alt={k} width={size} height={size} style={{ width: size, height: size }} className="rounded-lg shrink-0 bg-black object-cover" /> : null;
+};
+
 function Draft({ pool, onStartTri }) {
   const [open, setOpen] = useState(false);
   const [caps, setCaps] = useState(['', '', '']);
@@ -882,7 +891,7 @@ function Draft({ pool, onStartTri }) {
   const nick = (id) => (pool.find((p) => p.id === id) || {}).nickname || '?';
   const setCap = (i, id) => { const c = [...caps]; c[i] = id; setCaps(c); setAsg((a) => { const n = { ...a }; delete n[id]; return n; }); };
   const teams = [0, 1, 2].map((i) => ({
-    name: caps[i] ? `Equipo ${nick(caps[i])}` : `Equipo ${L[i]}`, cap: caps[i],
+    name: caps[i] ? `${teamName(i)} · ${nick(caps[i])}` : teamName(i), cap: caps[i],
     ids: caps[i] ? [caps[i], ...pool.filter((p) => asg[p.id] === i && !caps.includes(p.id)).map((p) => p.id)] : []
   }));
   const free = pool.filter((p) => !caps.includes(p.id));
@@ -914,7 +923,7 @@ function Draft({ pool, onStartTri }) {
           ))}
         </div>
       )}
-      {ready && <div className="grid grid-cols-3 gap-2">{teams.map((t, i) => <div key={i} className="rounded-xl border border-slate-800 p-2 text-center"><b className="text-xs">{t.name}</b><p className="text-[10px] text-slate-400">{t.ids.length} jugadores</p></div>)}</div>}
+      {ready && <div className="grid grid-cols-3 gap-2">{teams.map((t, i) => <div key={i} className="rounded-xl border border-slate-800 p-2 text-center"><div className="flex justify-center mb-1"><ElemLogo name={t.name} size={44} /></div><b className="text-xs">{t.name}</b><p className="text-[10px] text-slate-400">{t.ids.length} jugadores</p></div>)}</div>}
       <button disabled={!ready} onClick={() => onStartTri(teams)} className="btn-fire w-full py-2.5 rounded-xl text-xs font-black disabled:opacity-40">Iniciar triangular con estos equipos 🔥</button>
     </div>
   );
@@ -957,6 +966,7 @@ function Triangular({ tri, players, isAdmin }) {
   };
   const box = (i) => (
     <div className="rounded-xl border border-amber-500/40 bg-slate-950 p-2">
+      <div className="flex justify-center mb-1"><ElemLogo name={T[i].name} size={52} /></div>
       <b className="text-sm">{T[i].name}</b>
       {T[i].cap && <p className="text-[10px] text-amber-400">👑 {(players.find((p) => p.id === T[i].cap) || {}).nickname}</p>}
       <p className="text-[10px] text-slate-400">{T[i].ids.map((id) => (players.find((p) => p.id === id) || {}).nickname || (isGuest(id) ? guestName(id) + ' (inv.)' : null)).filter(Boolean).join(', ')}</p>
@@ -985,7 +995,7 @@ function Triangular({ tri, players, isAdmin }) {
         <div className="grid grid-cols-[1fr_repeat(4,2rem)] gap-1 text-[11px] text-slate-500 font-bold px-1"><span>Equipo</span><span className="text-center">PJ</span><span className="text-center">G</span><span className="text-center">P</span><span className="text-center">Sets</span></div>
         {table.map((r, k) => (
           <div key={r.i} className={`grid grid-cols-[1fr_repeat(4,2rem)] gap-1 text-xs px-1 py-1.5 rounded-lg ${k === 0 && games.length ? 'bg-amber-500/10' : ''}`}>
-            <span className="font-bold">{k === 0 && games.length ? '👑 ' : ''}{r.name}</span><span className="text-center">{r.pj}</span><span className="text-center text-emerald-400 font-bold">{r.g}</span><span className="text-center text-rose-400">{r.p}</span><span className="text-center">{r.sf}-{r.sc}</span>
+            <span className="font-bold flex items-center gap-1.5">{k === 0 && games.length ? '👑 ' : ''}<ElemLogo name={r.name} size={20} />{r.name}</span><span className="text-center">{r.pj}</span><span className="text-center text-emerald-400 font-bold">{r.g}</span><span className="text-center text-rose-400">{r.p}</span><span className="text-center">{r.sf}-{r.sc}</span>
           </div>
         ))}
       </div>
@@ -1014,7 +1024,7 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
 
   const gen = () => {
     const T = Array.from({ length: n }, (_, i) => ({
-      name: 'Equipo ' + String.fromCharCode(65 + i),
+      name: teamName(i),
       pl: [],
       tot: 0
     }));
@@ -1051,7 +1061,7 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
   // Armado a mano: tú eliges en qué equipo va cada jugador
   const genMan = () => {
     const T = Array.from({ length: n }, (_, i) => ({
-      name: 'Equipo ' + String.fromCharCode(65 + i),
+      name: teamName(i),
       pl: pool.filter((p) => asg[p.id] === i),
       tot: 0
     }));
@@ -1176,7 +1186,7 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
             {res.map((e) => (
               <div key={e.name} className={card + ' !p-0 overflow-hidden'}>
                 <div className="p-3 bg-slate-800/80 flex justify-between items-center border-b border-slate-700/50">
-                  <b className="text-amber-400">{e.name}</b>
+                  <span className="flex items-center gap-2"><ElemLogo name={e.name} size={44} /><b className="text-amber-400">{e.name}</b></span>
                   <span className="text-xs font-mono text-amber-300 font-bold">⭐ Prom: {(e.tot / (e.pl.length || 1)).toFixed(1)}</span>
                 </div>
                 <div className="p-3 divide-y divide-slate-800/80">

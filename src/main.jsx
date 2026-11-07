@@ -127,11 +127,15 @@ const POS = [
   { id: 'defensa', label: 'Defensa', s: 'DEF', c: 'bg-rose-500/20 text-rose-400 border-rose-500/30' }
 ];
 
-const SK = ['saque', 'recepcion', 'armado', 'ataque', 'bloqueo', 'defensa'];
+// Recepción y defensa son lo mismo: una sola habilidad ('defensa'). Si un jugador antiguo tiene también 'recepcion', se promedian.
+const SK = ['saque', 'armado', 'ataque', 'bloqueo', 'defensa'];
+const SKL = { defensa: 'Def. y recep.' };
+const skLabel = (k) => SKL[k] || k;
+const skv = (s, k) => (k === 'defensa' && s && s.recepcion ? Math.round(((s.recepcion || 3) + (s.defensa || 3)) / 2) : (s && s[k]) || 3);
 const AV = ['🏐', '🔥', '⚡', '💣', '🛡️', '🎯', '🌟', '💥', '🦅', '🦁'];
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'setiembre', 'octubre', 'noviembre', 'diciembre'];
 
-const ovr = (s) => SK.reduce((a, k) => a + ((s && s[k]) || 3), 0) / 6;
+const ovr = (s) => SK.reduce((a, k) => a + skv(s, k), 0) / SK.length;
 const ago = (t) => {
   const m = Math.floor((Date.now() - t) / 60000);
   return m < 1 ? 'Justo ahora' : m < 60 ? `Hace ${m} min` : m < 1440 ? `Hace ${Math.floor(m / 60)} h` : `Hace ${Math.floor(m / 1440)} d`;
@@ -391,7 +395,7 @@ function Auth({ user, setReg = () => {} }) {
               {SK.map((k) => (
                 <div key={k} className="bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs">
                   <div className="flex justify-between mb-1">
-                    <span className="capitalize text-slate-400">{k}</span>
+                    <span className="capitalize text-slate-400">{skLabel(k)}</span>
                     <b className="text-amber-400">{f.skills[k]}</b>
                   </div>
                   <input type="range" min="1" max="5" value={f.skills[k]} className="w-full accent-orange-500 cursor-pointer" onChange={(e) => setF({ ...f, skills: { ...f.skills, [k]: +e.target.value } })} />
@@ -850,8 +854,8 @@ function Roster({ players, onProfile }) {
               <div className="mt-2.5 grid grid-cols-2 gap-1.5 text-[10px] bg-slate-950 rounded-xl p-2.5 border border-slate-800/80">
                 {SK.map((k) => (
                   <div key={k} className="flex justify-between items-center">
-                    <span className="capitalize text-slate-400">{k}</span>
-                    <b className="text-amber-400 font-mono">{(p.skills || {})[k] || 3}/5</b>
+                    <span className="capitalize text-slate-400">{skLabel(k)}</span>
+                    <b className="text-amber-400 font-mono">{skv(p.skills, k)}/5</b>
                   </div>
                 ))}
               </div>
@@ -1006,11 +1010,12 @@ function Triangular({ tri, players, isAdmin }) {
 
 function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) {
   const [off, setOff] = useState([]);
+  const [calib, setCalib] = useState(null);
   const upcoming = events.filter((e) => e.date && when(e) >= Date.now() - 6 * 36e5).sort((a, b) => when(a) - when(b));
   const [sel, setSel] = useState(initialEv || (upcoming[0] ? upcoming[0].id : 'all'));
   const ev = events.find((e) => e.id === sel);
   const opts = ev && !upcoming.find((e) => e.id === ev.id) ? [ev, ...upcoming] : upcoming;
-  const base = ev ? effGoing(ev).slice(0, ev.cap || 12).map((id) => players.find((p) => p.id === id) || (isGuest(id) ? { id, nickname: guestName(id) + ' (inv.)', avatar: '🎟️', position: guestPosOf(ev, id) || 'invitado', skills: {}, isGuest: true } : null)).filter(Boolean) : players;
+  const base = ev ? effGoing(ev).slice(0, ev.cap || 12).map((id) => players.find((p) => p.id === id) || (isGuest(id) ? { id, nickname: guestName(id) + ' (inv.)', avatar: '🎟️', position: guestPosOf(ev, id) || 'invitado', skills: (ev.guestSk || {})[id] || {}, isGuest: true } : null)).filter(Boolean) : players;
   const waiting = ev ? Math.max(0, effGoing(ev).length - (ev.cap || 12)) : 0;
 
   const [n, setN] = useState(2);
@@ -1193,6 +1198,7 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
                   {e.pl.map((p) => (
                     <div key={p.id} className="py-1.5 flex justify-between items-center text-sm">
                       <span className="text-slate-200">{p.avatar} {p.nickname}</span>
+                      {isAdmin && <button title="Editar score" onClick={() => setCalib(p)} className="ml-auto mr-2 text-[11px] font-mono font-bold text-amber-400 bg-slate-800 rounded-lg px-1.5 py-0.5">⭐ {ovr(p.skills).toFixed(1)}</button>}
                       {p.isGuest && !POS.some((x) => x.id === p.position) ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-slate-700/40 text-slate-300 border-slate-600">INV</span> : <Badge id={p.position} />}
                     </div>
                   ))}
@@ -1201,6 +1207,8 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
             ))}
           </div>
 
+          {isAdmin && <p className="text-[11px] text-slate-400">Toca el ⭐ de un jugador para ajustar su score. Luego vuelve a generar los equipos para rebalancear.</p>}
+          {calib && <SkillEditor player={calib} onClose={() => setCalib(null)} onSave={calib.isGuest && ev ? (skills, pos) => db.collection('events').doc(ev.id).update({ ['guestSk.' + calib.id]: skills, ...(pos ? { ['guestPos.' + calib.id]: pos } : {}) }) : undefined} />}
           <div className="flex flex-wrap gap-2">
             <button onClick={() => copy(true)} className="flex-1 min-w-[150px] py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow">
               Enviar al grupo de WhatsApp 💬
@@ -1741,6 +1749,63 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
 }
 
 // ===== PANEL DE ADMINISTRADORES (EXCLUSIVO JUSTIN & YULISA) =====
+// ===== Editor de score (habilidades) de un jugador — solo admins =====
+function SkillEditor({ player, onClose, onSave }) {
+  const [p, setP] = useState(() => { const c = JSON.parse(JSON.stringify(player)); c.skills = Object.fromEntries(SK.map((k) => [k, skv(c.skills, k)])); return c; });
+  const [busy, setBusy] = useState(false);
+  const sk = (k) => (p.skills && p.skills[k]) || 3;
+  const shift = (d) => setP({ ...p, skills: Object.fromEntries(SK.map((k) => [k, Math.min(5, Math.max(1, sk(k) + d))])) });
+  const posOk = POS.some((x) => x.id === p.position);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const skills = Object.fromEntries(SK.map((k) => [k, sk(k)]));
+      if (onSave) await onSave(skills, posOk ? p.position : '');
+      else await db.collection('players').doc(p.id).update({ skills, position: p.position });
+      onClose();
+    } catch (e) { alert('No se pudo guardar: ' + e.message); }
+    setBusy(false);
+  };
+  return (
+    <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-3">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 space-y-3 text-xs enter shadow-2xl max-h-[92vh] overflow-y-auto">
+        <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+          <b className="text-sm text-amber-400">Score de {p.nickname}</b>
+          <button onClick={onClose} className="text-slate-400 hover:text-white text-base">✕</button>
+        </div>
+        <div className="flex items-center justify-between bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+          <span className="text-slate-400">⭐ Score general</span>
+          <b className="text-2xl font-mono text-amber-400">{ovr(p.skills).toFixed(1)}</b>
+          <span className="flex gap-1.5">
+            <button onClick={() => shift(-1)} className="px-2.5 py-1.5 rounded-lg bg-slate-800 text-rose-300 font-bold">−1 todo</button>
+            <button onClick={() => shift(1)} className="px-2.5 py-1.5 rounded-lg bg-slate-800 text-emerald-300 font-bold">+1 todo</button>
+          </span>
+        </div>
+        <div>
+          <label className="block text-[11px] text-slate-400 mb-1">Posición</label>
+          <select className={inp} value={posOk ? p.position : ''} onChange={(e) => setP({ ...p, position: e.target.value })}>
+            {!posOk && <option value="">¿Pos?</option>}
+            {POS.map((pos) => <option key={pos.id} value={pos.id}>{pos.label}</option>)}
+          </select>
+        </div>
+        <div className="space-y-2 pt-1">
+          {SK.map((k) => (
+            <div key={k} className="flex justify-between items-center gap-2 bg-slate-950 p-2 rounded-xl border border-slate-800">
+              <span className="capitalize w-24 text-slate-400">{skLabel(k)}</span>
+              <input type="range" min="1" max="5" value={sk(k)} className="flex-1 accent-orange-500 cursor-pointer" onChange={(e) => setP({ ...p, skills: { ...p.skills, [k]: +e.target.value } })} />
+              <b className="w-5 text-right text-amber-400 font-mono">{sk(k)}</b>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2 pt-2">
+          <button onClick={onClose} className="w-1/2 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold transition">Cancelar</button>
+          <button disabled={busy} onClick={save} className="btn-fire w-1/2 py-2 rounded-xl font-black shadow transition disabled:opacity-50">{busy ? 'Guardando...' : 'Guardar'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminPanel({ me, players }) {
   const [selectedPlayer, setSelectedPlayer] = useState(null);
   const [msgPost, setMsgPost] = useState('');
@@ -1888,42 +1953,7 @@ function AdminPanel({ me, players }) {
         </div>
       )}
 
-      {/* Modal de calibración */}
-      {selectedPlayer && (
-        <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-3">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 space-y-3 text-xs enter shadow-2xl">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-              <b className="text-sm text-amber-400">Ajustar notas de {selectedPlayer.nickname}</b>
-              <button onClick={() => setSelectedPlayer(null)} className="text-slate-400 hover:text-white text-base">✕</button>
-            </div>
-
-            <div>
-              <label className="block text-[11px] text-slate-400 mb-1">Cambiar Posición Táctica</label>
-              <select className={inp} value={selectedPlayer.position} onChange={(e) => setSelectedPlayer({ ...selectedPlayer, position: e.target.value })}>
-                {POS.map((pos) => <option key={pos.id} value={pos.id}>{pos.label}</option>)}
-              </select>
-            </div>
-
-            <div className="space-y-2 pt-1">
-              {SK.map((k) => (
-                <div key={k} className="flex justify-between items-center gap-2 bg-slate-950 p-2 rounded-xl border border-slate-800">
-                  <span className="capitalize w-20 text-slate-400">{k}</span>
-                  <input type="range" min="1" max="5" value={selectedPlayer.skills?.[k] || 3} className="flex-1 accent-orange-500 cursor-pointer" onChange={(e) => setSelectedPlayer({
-                    ...selectedPlayer,
-                    skills: { ...selectedPlayer.skills, [k]: +e.target.value }
-                  })} />
-                  <b className="w-5 text-right text-amber-400 font-mono">{selectedPlayer.skills?.[k] || 3}</b>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <button onClick={() => setSelectedPlayer(null)} className="w-1/2 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold transition">Cancelar</button>
-              <button onClick={updateSkills} className="btn-fire w-1/2 py-2 rounded-xl font-black shadow transition">Guardar cambios</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {selectedPlayer && <SkillEditor player={selectedPlayer} onClose={() => setSelectedPlayer(null)} />}
     </div>
   );
 }
@@ -2374,10 +2404,10 @@ function ProfilePage({ id, me, players, posts, isAdmin, events, onProfile, onClo
       <div className={card + ' space-y-1.5'}>
         <p className="text-xs font-bold text-amber-400 mb-1">Fundamentos</p>
         {SK.map((k) => {
-          const v = (p.skills || {})[k] || 3;
+          const v = skv(p.skills, k);
           return (
             <div key={k} className="flex items-center gap-2 text-[11px]">
-              <span className="w-20 capitalize text-slate-400">{k}</span>
+              <span className="w-24 capitalize text-slate-400">{skLabel(k)}</span>
               <div className="flex-1 h-2 rounded-full bg-slate-800 overflow-hidden"><div className="bar h-full rounded-full" style={{ width: (v / 5) * 100 + '%' }} /></div>
               <b className="w-5 text-right text-amber-400 font-mono">{v}</b>
             </div>

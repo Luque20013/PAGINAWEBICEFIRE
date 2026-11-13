@@ -1,5 +1,5 @@
 // Service worker mínimo: red primero, y si no hay internet muestra la última versión guardada.
-const CACHE = 'icefire-v2';
+const CACHE = 'icefire-v3';
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));

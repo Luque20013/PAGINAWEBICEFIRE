@@ -147,14 +147,9 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // ---------- Invitados guardados (cartas) y torneo de 4 equipos ----------
-    match /invitados/{id} {
-      allow read: if signedIn();
-      allow write: if isAdmin();
-    }
-    match /torneo4/{doc} {
-      allow read: if signedIn();
-      allow write: if isAdmin();
+    // ---------- Marcador (4 equipos e individual): SOLO admins ----------
+    match /marcador/{doc} {
+      allow read, write: if isAdmin();
     }
 
     // ---------- Asistencia del mes (un documento por mes: 2026-11) ----------

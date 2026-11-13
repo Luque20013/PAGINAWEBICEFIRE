@@ -1,4 +1,4 @@
-name: Publicar AceFire
+name: Publicar IceFire
 on:
   push:
     branches: [main]

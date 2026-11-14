@@ -878,13 +878,76 @@ function Roster({ players, onProfile }) {
 
 // ===== ARMADO INTELIGENTE DE EQUIPOS =====
 // ===== Armar a mano: cada capitán con su equipo =====
-// ===== ELEMENTOS: los equipos se llaman Fuego, Hielo y Aire (con su logo) =====
-const ELEMS = ['Fuego 🔥', 'Hielo ❄️', 'Aire 🌪️'];
+// ===== ELEMENTOS: los equipos se llaman Fuego, Hielo, Aire y Tierra (con su logo) =====
+const ELEMS = ['Fuego 🔥', 'Hielo ❄️', 'Aire 🌪️', 'Tierra 🌿'];
 const teamName = (i) => ELEMS[i] || 'Equipo ' + String.fromCharCode(65 + i);
-const elemKey = (name) => { const m = /fuego|hielo|aire/i.exec(name || ''); return m ? m[0].toLowerCase() : null; };
+const elemKey = (name) => { const m = /fuego|hielo|aire|tierra/i.exec(name || ''); return m ? m[0].toLowerCase() : null; };
+// Color de cada elemento (RGB) para brillos, bordes y confeti
+const ELEM_COL = { fuego: '255,120,40', hielo: '90,200,255', aire: '170,235,225', tierra: '120,200,90' };
+const elemBox = (name) => { const c = ELEM_COL[elemKey(name)]; return c ? { borderColor: `rgba(${c},.6)`, boxShadow: `0 0 18px rgba(${c},.2), inset 0 0 24px rgba(${c},.08)` } : {}; };
+// Logo de Tierra (dibujado aquí mismo, no necesita archivo)
+const TIERRA_LOGO = 'data:image/svg+xml;utf8,' + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><radialGradient id='g' cx='50%' cy='30%' r='80%'><stop offset='0' stop-color='#3d7a34'/><stop offset='1' stop-color='#08110a'/></radialGradient></defs><rect width='100' height='100' fill='url(#g)'/><path d='M6 84 L34 42 L48 62 L66 34 L94 84 Z' fill='#8a5a33'/><path d='M34 42 L44 56 L36 53 L28 56 Z M66 34 L75 48 L67 45 L59 48 Z' fill='#d9c9a3'/><path d='M50 30 C38 26 30 14 32 6 C44 8 52 18 50 30 Z' fill='#6fd45a'/><path d='M50 30 C62 26 70 14 68 6 C56 8 48 18 50 30 Z' fill='#4ca43d'/><rect x='48.6' y='28' width='2.8' height='14' rx='1.4' fill='#2d6a25'/></svg>");
 const ElemLogo = ({ name, size = 40 }) => {
   const k = elemKey(name);
-  return k ? <img src={`./elementos/${k}.jpg`} alt={k} width={size} height={size} style={{ width: size, height: size }} className="rounded-lg shrink-0 bg-black object-cover" /> : null;
+  if (!k) return null;
+  const c = ELEM_COL[k];
+  return <img src={k === 'tierra' ? TIERRA_LOGO : `./elementos/${k}.jpg`} alt={k} width={size} height={size} style={{ width: size, height: size, boxShadow: `0 0 ${Math.round(size / 3)}px rgba(${c},.6)` }} className="elem-logo rounded-lg shrink-0 bg-black object-cover" />;
+};
+
+// ===== Sonido y confeti (se sintetizan en el celular, sin archivos) =====
+let _AC = null;
+const sndOn = () => { try { return localStorage.getItem('af-snd') !== '0'; } catch (e) { return true; } };
+const sndSave = (v) => { try { localStorage.setItem('af-snd', v ? '1' : '0'); } catch (e) {} };
+const getAC = () => { try { if (!_AC) _AC = new (window.AudioContext || window.webkitAudioContext)(); if (_AC.state === 'suspended') _AC.resume(); return _AC; } catch (e) { return null; } };
+const tone = (f, dur = 0.15, type = 'sine', vol = 0.12, at = 0, f2) => {
+  const ac = getAC(); if (!ac) return;
+  const t = ac.currentTime + at, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t);
+  if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + dur + 0.02);
+};
+const noise = (dur = 0.4, freq = 1200, q = 1, vol = 0.12, at = 0, f2) => {
+  const ac = getAC(); if (!ac) return;
+  const n = Math.floor(ac.sampleRate * dur), buf = ac.createBuffer(1, n, ac.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  const src = ac.createBufferSource(), bp = ac.createBiquadFilter(), g = ac.createGain(), t = ac.currentTime + at;
+  src.buffer = buf; bp.type = 'bandpass'; bp.Q.value = q; bp.frequency.setValueAtTime(freq, t);
+  if (f2) bp.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + dur * 0.2); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(bp); bp.connect(g); g.connect(ac.destination); src.start(t);
+};
+const SFX = {
+  tap: () => tone(660, 0.08, 'triangle', 0.1),
+  point: () => { tone(523, 0.12, 'triangle', 0.12); tone(784, 0.18, 'triangle', 0.12, 0.09); },
+  fuego: () => { noise(0.7, 600, 0.8, 0.16, 0, 2400); tone(110, 0.5, 'sawtooth', 0.05, 0, 220); },
+  hielo: () => { [1568, 2093, 2637].forEach((f, i) => tone(f, 0.5, 'sine', 0.07, i * 0.08)); },
+  aire: () => noise(0.9, 400, 0.6, 0.15, 0, 2200),
+  tierra: () => { tone(80, 0.45, 'sine', 0.2, 0, 45); noise(0.35, 220, 1.2, 0.18); },
+  win: () => { [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.22, 'triangle', 0.13, i * 0.11)); tone(1047, 0.5, 'triangle', 0.13, 0.5); },
+};
+const sfx = (n) => { if (!sndOn()) return; try { if (SFX[n]) SFX[n](); } catch (e) {} };
+const confetti = (cols, n = 60) => {
+  try {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const W = window.innerWidth, H = window.innerHeight;
+    for (let i = 0; i < n; i++) {
+      const el = document.createElement('i');
+      const sz = 6 + Math.random() * 7;
+      el.style.cssText = `position:fixed;z-index:9999;pointer-events:none;top:-14px;left:${Math.random() * W}px;width:${sz}px;height:${sz * 1.6}px;background:${cols[i % cols.length]};border-radius:2px;`;
+      document.body.appendChild(el);
+      const dx = (Math.random() - 0.5) * 220, rot = (Math.random() - 0.5) * 900;
+      const a = el.animate([{ transform: 'translate3d(0,0,0) rotate(0deg)', opacity: 1 }, { transform: `translate3d(${dx}px,${H + 40}px,0) rotate(${rot}deg)`, opacity: 0.85 }], { duration: 1500 + Math.random() * 1600, easing: 'cubic-bezier(.2,.6,.4,1)', delay: Math.random() * 250 });
+      a.onfinish = () => el.remove();
+    }
+  } catch (e) {}
+};
+// Efecto de victoria: sonido del elemento ganador + fanfarria + confeti con sus colores + vibración
+const winFx = (name, big) => {
+  const k = elemKey(name), c = ELEM_COL[k];
+  sfx(k || 'point'); setTimeout(() => sfx('win'), 450);
+  confetti(c ? ['rgb(' + c + ')', '#fbbf24', '#ffffff'] : ['#f97316', '#fbbf24', '#38bdf8', '#ffffff'], big ? 110 : 55);
+  try { if (navigator.vibrate) navigator.vibrate(big ? [80, 40, 80, 40, 160] : [60]); } catch (e) {}
 };
 
 function Draft({ pool, onStartTri }) {
@@ -1098,6 +1161,7 @@ function Triangular({ tri, players, isAdmin }) {
       b.set(db.collection('matches').doc(), { teamA: T[x].ids, teamB: T[y].ids, scoreA: sa, scoreB: sb, mvp, createdAt: Date.now() });
       b.update(db.collection('triangulars').doc(tri.id), { games: FV.arrayUnion({ a: x, b: y, sa, sb, at: Date.now() }), cur, wait, consec: c });
       await b.commit();
+      winFx(T[win].name);
       setSa(0); setSb(0); setMvp('');
     } catch (e) { alert('No se pudo guardar: ' + e.message); }
     setBusy(false);
@@ -1107,9 +1171,10 @@ function Triangular({ tri, players, isAdmin }) {
     const lines = table.map((r, k) => `${k + 1}. ${r.name}: ${r.g} G / ${r.p} P (sets ${r.sf}-${r.sc})`).join('\n');
     await db.collection('posts').add({ authorId: 'bot', authorName: 'IceFire', nick: 'arbitro', avatar: '🏆', content: `🏆 Triangular terminado (${games.length} partidos)\n${lines}\n🔥 Campeón: ${table[0].name}`, badge: '🏆 Triangular', likes: [], comments: [], createdAt: Date.now() });
     await db.collection('triangulars').doc(tri.id).update({ active: false });
+    winFx(table[0].name, true);
   };
   const box = (i) => (
-    <div className="rounded-xl border border-amber-500/40 bg-slate-950 p-2">
+    <div className="rounded-xl border border-amber-500/40 bg-slate-950 p-2" style={elemBox(T[i].name)}>
       <div className="flex justify-center mb-1"><ElemLogo name={T[i].name} size={52} /></div>
       <b className="text-sm">{T[i].name}</b>
       {T[i].cap && <p className="text-[10px] text-amber-400">👑 {(players.find((p) => p.id === T[i].cap) || {}).nickname}</p>}
@@ -1211,6 +1276,7 @@ function Cuadrangular({ quad, players, isAdmin }) {
       bump(bt, w, 'matchesWon', 1); bump(bt, l, 'matchesLost', 1);
       bt.update(db.collection('quads').doc(quad.id), { games: FV.arrayUnion({ round, court: c, a, b: bb, w, l, at: Date.now() }) });
       await bt.commit();
+      winFx((T[w] || {}).name);
     } catch (e) { alert('No se pudo guardar: ' + e.message); }
     setBusy(false);
   };
@@ -1233,6 +1299,7 @@ function Cuadrangular({ quad, players, isAdmin }) {
     try {
       await db.collection('posts').add({ authorId: 'bot', authorName: 'IceFire', nick: 'arbitro', avatar: '🏆', content: `🏆 Cuadrangular terminado (${games.length} partidos)\n${lines}\n🔥 Campeón: ${table[0].name}${pays.length ? '\n💰 Cuentas (S/ ' + PER + ' por cabeza):\n' + pays.map((x) => `${who(x.from)} → ${who(x.to)}: S/ ${money(x.m)}`).join('\n') : ''}`, badge: '🏆 Cuadrangular', likes: [], comments: [], createdAt: Date.now() });
       await db.collection('quads').doc(quad.id).update({ active: false });
+      winFx(table[0].name, true);
     } catch (e) { alert('No se pudo terminar: ' + e.message); }
   };
 
@@ -1247,7 +1314,7 @@ function Cuadrangular({ quad, players, isAdmin }) {
     try { await db.collection('quads').doc(quad.id).update({ teams: T.map((t, k) => (k === i ? { ...t, name: n } : t)) }); } catch (e) { alert('No se pudo cambiar el nombre: ' + e.message); }
   };
   const box = (i) => (
-    <div className="rounded-xl border border-amber-500/40 bg-slate-950 p-2 text-center">
+    <div className="rounded-xl border border-amber-500/40 bg-slate-950 p-2 text-center" style={elemBox(T[i].name)}>
       <div className="flex justify-center mb-1"><ElemLogo name={T[i].name} size={40} /></div>
       <b className="text-sm">{T[i].name}</b>
       {isAdmin && <button onClick={() => rename(i)} aria-label={'Cambiar nombre de ' + T[i].name} className="ml-1 text-[11px] text-slate-400">✏️</button>}
@@ -1443,6 +1510,7 @@ function Cartas({ players, isAdmin, events = [] }) {
   const cardId = (c) => (c.reg ? c.p.id : 'guest:' + cleanName(c.name));
   const marcar = async (c) => {
     if (!ev) return;
+    sfx('tap');
     const id = cardId(c);
     if (evGoing.includes(id)) {
       if (c.reg) { await db.collection('events').doc(ev.id).update({ going: FV.arrayRemove(id), ['paid.' + id]: FV.delete() }).catch((e) => alert('No se pudo quitar: ' + e.message)); }
@@ -1574,6 +1642,94 @@ function Cartas({ players, isAdmin, events = [] }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ===== Registrar una pichanga que YA PASÓ: pegas la lista y todos quedan con asistencia =====
+const normN = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+const cleanId = (n) => String(n || '').trim().replace(/[.\[\]*~/`]/g, '').slice(0, 30);
+function PichangaPasada({ me, players, events }) {
+  const [open, setOpen] = useState(false);
+  const [target, setTarget] = useState('new');
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('20:00');
+  const [title, setTitle] = useState('Pichanga de vóley');
+  const [txt, setTxt] = useState('');
+  const [busy, setBusy] = useState(false);
+  const names = [...new Set(txt.split(/[\n,;]+/).map((x) => x.replace(/[^\p{L}\p{N}\s.'-]/gu, '').replace(/^[\d\s.)-]+/, '').replace(/\s+/g, ' ').trim().slice(0, 30)).filter(Boolean))];
+  const buscar = (n) => {
+    const k = normN(n);
+    let pl = players.find((x) => normN(x.nickname) === k);
+    if (!pl && k.length >= 3) {
+      const c = players.filter((x) => { const pk = normN(x.nickname); return pk.length >= 3 && (pk.startsWith(k) || k.startsWith(pk)); });
+      if (c.length === 1) pl = c[0];
+    }
+    return pl;
+  };
+  const seen = new Set();
+  const items = [];
+  names.forEach((n) => {
+    const pl = buscar(n);
+    const it = pl ? { id: pl.id, label: pl.nickname, raw: n, reg: true } : { id: 'guest:' + cleanId(n), label: cleanId(n), raw: n, reg: false };
+    if (!cleanId(it.label) || seen.has(it.id)) return;
+    seen.add(it.id); items.push(it);
+  });
+  const pasadas = events.filter((e) => e.date).sort((a, b) => when(b) - when(a)).slice(0, 20);
+  const guardar = async () => {
+    if (!items.length) return alert('Pega primero la lista de nombres.');
+    const ev = target === 'new' ? null : events.find((e) => e.id === target);
+    if (!ev && !date) return alert('Elige la fecha de la pichanga.');
+    setBusy(true);
+    try {
+      const ids = items.map((i) => i.id);
+      if (ev) {
+        const patch = { going: FV.arrayUnion(...ids) };
+        ids.forEach((id) => { patch['att.' + id] = true; });
+        await db.collection('events').doc(ev.id).update(patch);
+      } else {
+        const att = {};
+        ids.forEach((id) => { att[id] = true; });
+        await db.collection('events').add({ title: title.trim() || 'Pichanga de vóley', date, time: time || '20:00', place: '', maps: '', fee: 0, cap: Math.max(12, ids.length), going: ids, att, paid: {}, createdBy: me.id, createdAt: Date.now(), fromList: true });
+      }
+      items.filter((i) => !i.reg).forEach((i) => saveGuest(i.label, '', ''));
+      alert('✅ Listo: ' + items.length + ' jugadores con asistencia marcada.');
+      setTxt('');
+    } catch (e) { console.error(e); alert('No se pudo guardar: ' + e.message); }
+    setBusy(false);
+  };
+  return (
+    <div className={card + ' space-y-2.5'}>
+      <button onClick={() => setOpen(!open)} className="w-full py-2.5 rounded-xl text-sm font-bold bg-slate-800 border border-amber-500/40 text-amber-300">
+        {open ? 'Cerrar' : '📝 Registrar pichanga que ya pasó (pegar lista)'}
+      </button>
+      {open && (
+        <div className="space-y-2.5 enter">
+          <select className={inp} value={target} onChange={(e) => setTarget(e.target.value)}>
+            <option value="new">➕ Crear una pichanga nueva (de otro día)</option>
+            {pasadas.map((e) => <option key={e.id} value={e.id}>Agregar a: {e.title} · {e.date}</option>)}
+          </select>
+          {target === 'new' && (
+            <div className="grid grid-cols-2 gap-2">
+              <label className="text-[11px] text-slate-400">Fecha<input type="date" className={inp + ' mt-1'} value={date} onChange={(e) => setDate(e.target.value)} /></label>
+              <label className="text-[11px] text-slate-400">Hora<input type="time" className={inp + ' mt-1'} value={time} onChange={(e) => setTime(e.target.value)} /></label>
+              <input className={inp + ' col-span-2'} maxLength={60} placeholder="Título" value={title} onChange={(e) => setTitle(e.target.value)} />
+            </div>
+          )}
+          <textarea rows={7} className={inp} placeholder={'Pega aquí la lista de los que fueron (uno por línea, sirve la de WhatsApp con números):\n1. Juan\n2. Pedro\n3. Mari'} value={txt} onChange={(e) => setTxt(e.target.value)} />
+          {items.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[11px] text-slate-400">Se marcarán como <b className="text-emerald-400">asistieron</b> ({items.length}). ✅ = jugador registrado · 🎟️ = invitado nuevo (se crea su carta). Revisa que estén bien escritos:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {items.map((i) => (
+                  <span key={i.id} className={`text-[11px] px-2 py-1 rounded-lg border ${i.reg ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300' : 'bg-amber-500/10 border-amber-500/40 text-amber-300'}`}>{i.reg ? '✅' : '🎟️'} {i.label}{i.reg && normN(i.raw) !== normN(i.label) ? ' (' + i.raw + ')' : ''}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          <button disabled={busy || !items.length} onClick={guardar} className="btn-fire w-full py-2.5 rounded-xl text-sm font-black disabled:opacity-50">{busy ? 'Guardando...' : '💾 Guardar asistencia'}</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1964,6 +2120,7 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
   };
 
   const toggle = (ev) => {
+    sfx('tap');
     if (!(ev.going || []).includes(me.id) && payClosed(ev)) return alert('El plazo de pago ya venció: las inscripciones de esta pichanga están cerradas.');
     db.collection('events').doc(ev.id).update({
       going: (ev.going || []).includes(me.id) ? FV.arrayRemove(me.id) : FV.arrayUnion(me.id)
@@ -2307,6 +2464,7 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
           {open ? 'Cerrar formulario' : '+ Nueva convocatoria de pichanga'}
         </button>
       )}
+      {isAdmin && <PichangaPasada me={me} players={players} events={events} />}
 
       <div className={card + ' space-y-1'}>
         <div className="flex items-center justify-between"><b className="text-sm">🏦 Fondo del grupo</b><span className="num text-xl text-emerald-400 font-black">S/ {fund.paid}</span></div>
@@ -3273,6 +3431,8 @@ function Main({ user }) {
     return () => window.removeEventListener('hashchange', f);
   }, []);
   const [theme, setTheme] = useState(document.documentElement.dataset.theme || 'light');
+  const [snd, setSnd] = useState(sndOn());
+  const toggleSnd = () => { const v = !snd; sndSave(v); setSnd(v); if (v) sfx('point'); };
   const toggleTheme = () => {
     const t = theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = t;
@@ -3348,6 +3508,7 @@ function Main({ user }) {
           {WA_COMMUNITY_LINK && (
             <a href={WA_COMMUNITY_LINK} target="_blank" rel="noreferrer" title="Comunidad de WhatsApp" className="w-9 h-9 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-base flex items-center justify-center">🌐</a>
           )}
+          <button title={snd ? 'Silenciar sonidos' : 'Activar sonidos'} onClick={toggleSnd} className="w-9 h-9 rounded-full bg-slate-800 text-base flex items-center justify-center">{snd ? '🔊' : '🔇'}</button>
           <button title={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'} onClick={toggleTheme} className="w-9 h-9 rounded-full bg-slate-800 text-base flex items-center justify-center">
             {theme === 'dark' ? '☀️' : '🌙'}
           </button>

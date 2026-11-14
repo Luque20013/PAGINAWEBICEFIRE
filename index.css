@@ -450,3 +450,8 @@ html[data-theme="dark"]::after { animation-duration: 23s; animation-delay: -14s;
 .logo .fire { background: linear-gradient(135deg, #F7DC8A, rgb(var(--fire)) 55%, #2F52D6); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 .btn-fire { background: linear-gradient(135deg, #F7DC8A 0%, rgb(var(--fire)) 50%, #B8860B 100%); color: #0B0F2A; text-shadow: none; }
 .af-mark { background: linear-gradient(135deg, #F2C14E, #2F52D6); }
+
+/* Logos de elementos con vida: flotan suave */
+.elem-logo { animation: elemfloat 3.2s ease-in-out infinite; }
+@keyframes elemfloat { 50% { transform: translateY(-3px) scale(1.04); } }
+@media (prefers-reduced-motion: reduce) { .elem-logo { animation: none; } }
